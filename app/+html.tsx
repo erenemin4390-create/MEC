@@ -4,7 +4,7 @@ import type { PropsWithChildren } from "react";
 export default function Root({ children }: PropsWithChildren) {
   const { headNodes, bodyNodes, htmlAttributes, bodyAttributes } = useServerDocumentContext();
   const githubPages = process.env.EXPO_PUBLIC_GITHUB_PAGES === "1";
-  const base = githubPages ? "/arev" : "";
+  const base = githubPages ? "/MEC" : "";
   const manifestPath = `${base}/manifest.json`;
   const serviceWorkerPath = `${base}/sw.js`;
   const serviceWorkerScript = `
