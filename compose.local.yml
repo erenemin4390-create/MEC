@@ -1,0 +1,9 @@
+# Nashi-style deployment: run the media service on your own computer.
+services:
+  arev:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      AREV_ALLOWED_ORIGINS: ${AREV_ALLOWED_ORIGINS:-https://erenemin4390-create.github.io}
+    restart: unless-stopped
