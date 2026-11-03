@@ -174,7 +174,7 @@ const config: ExpoConfig & { logoUrl: string } = {
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
-    baseUrl: "/arev",
+    baseUrl: process.env.EXPO_PUBLIC_GITHUB_PAGES === "1" ? "/MEC" : "/arev",
   },
 };
 
