@@ -45,25 +45,49 @@ export async function resolveApiBaseUrl(): Promise<string> {
   return override || getApiBaseUrl();
 }
 
+export function mediaNetworkError(cause: unknown, targetUrl: string): Error | null {
+  if (!(cause instanceof Error) || !/failed to fetch|network request failed|network error|load failed/i.test(cause.message)) {
+    return null;
+  }
+  let host = "seçili API";
+  try {
+    host = new URL(targetUrl).host || host;
+  } catch {
+    // Keep the generic label for malformed or relative addresses.
+  }
+  return new Error(`API sunucusuna ulaşılamadı (${host}). İnternet bağlantısını, HTTPS adresini ve sunucu erişim/origin ayarlarını kontrol edin.`);
+}
+
+export function missingMediaApiRoute(status: number, contentType: string | null): string | null {
+  if (status !== 404 || contentType?.toLowerCase().includes("application/json")) return null;
+  return "Medya API uç noktası bu sunucuda bulunamadı. Backend kodu güncel değil; AREV backend'ini sunucuya dağıtın.";
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const base = await resolveApiBaseUrl();
-  if (!base && typeof window === "undefined") {
+  if (!base) {
     throw new Error("API yapılandırması eksik. Ayarlar’dan güvenli bir HTTPS adresi ekleyin.");
   }
   const secret = await getInstallationSecret();
-  const response = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "x-arev-client": secret,
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "x-arev-client": secret,
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (cause) {
+    throw mediaNetworkError(cause, base) ?? cause;
+  }
   if (!response.ok) {
     let message = `Sunucu hatası (${response.status})`;
+    message = missingMediaApiRoute(response.status, response.headers.get("content-type")) ?? message;
     try {
-      const body = (await response.json()) as ApiError;
+      const body = JSON.parse(await response.text()) as ApiError;
       if (body.error) message = body.error;
     } catch {
       // Keep the status-based message.
@@ -99,6 +123,7 @@ export function cancelDownloadJob(id: string) {
 
 export async function getDownloadFileUrl(id: string): Promise<{ url: string; secret: string }> {
   const base = await resolveApiBaseUrl();
+  if (!base) throw new Error("API yapılandırması eksik. Ayarlar’dan güvenli bir HTTPS adresi ekleyin.");
   return { url: `${base}/api/media/jobs/${encodeURIComponent(id)}/file`, secret: await getInstallationSecret() };
 }
 

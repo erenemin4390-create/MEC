@@ -3,7 +3,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library/legacy";
 import * as Sharing from "expo-sharing";
 
-import { getDownloadFileUrl } from "@/lib/media/client";
+import { getDownloadFileUrl, mediaNetworkError, missingMediaApiRoute } from "@/lib/media/client";
 
 export type ProgressCallback = (progress: number) => void;
 
@@ -19,8 +19,16 @@ export async function downloadJobFile(
 ): Promise<{ uri?: string; browserDownload: boolean }> {
   const { url, secret } = await getDownloadFileUrl(jobId);
   if (Platform.OS === "web") {
-    const response = await fetch(url, { headers: { "x-arev-client": secret }, signal });
-    if (!response.ok) throw new Error(`Dosya aktarımı başarısız (${response.status})`);
+    let response: Response;
+    try {
+      response = await fetch(url, { headers: { "x-arev-client": secret }, signal });
+    } catch (cause) {
+      throw mediaNetworkError(cause, url) ?? cause;
+    }
+    if (!response.ok) {
+      const missingRoute = missingMediaApiRoute(response.status, response.headers.get("content-type"));
+      throw new Error(missingRoute ?? `Dosya aktarımı başarısız (${response.status})`);
+    }
     const total = Number(response.headers.get("content-length") ?? 0);
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
@@ -67,8 +75,17 @@ export async function downloadJobFile(
   );
   const abortTask = () => { void task.cancelAsync(); };
   signal.addEventListener("abort", abortTask, { once: true });
-  const result = await task.downloadAsync();
+  let result: Awaited<ReturnType<typeof task.downloadAsync>>;
+  try {
+    result = await task.downloadAsync();
+  } catch (cause) {
+    if (signal.aborted) throw cause;
+    throw mediaNetworkError(cause, url) ?? cause;
+  }
   signal.removeEventListener("abort", abortTask);
+  if (result?.status === 404) {
+    throw new Error(missingMediaApiRoute(result.status, result.headers?.["content-type"] ?? result.headers?.["Content-Type"] ?? null) ?? "Dosya aktarımı başarısız (404).");
+  }
   if (!result?.uri) throw new Error("İndirme tamamlanamadı.");
   onProgress(1);
   return { uri: result.uri, browserDownload: false };
